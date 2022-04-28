@@ -1,0 +1,24 @@
+{
+	"name": "projeto12-batepapo-uol-api",
+	"type": "module",
+	"version": "1.0.0",
+	"description": "",
+	"main": "index.js",
+	"scripts": {
+		"start": "node ./back-bate-papo-uol/index.js",
+		"dev": "nodemon ./back-bate-papo-uol/index.js"
+	},
+	"keywords": [],
+	"author": "",
+	"license": "ISC",
+	"dependencies": {
+		"chalk": "^5.0.1",
+		"cors": "^2.8.5",
+		"dotenv": "^16.0.0",
+		"express": "^4.18.0",
+		"mongodb": "^4.5.0"
+	},
+	"devDependencies": {
+		"nodemon": "^2.0.15"
+	}
+}
