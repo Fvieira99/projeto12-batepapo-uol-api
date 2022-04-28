@@ -6,7 +6,8 @@ import dotenv from "dotenv";
 import Joi from "joi";
 import dayjs from "dayjs";
 
-import schema from "./joi.js";
+import registerSchema from "./schemas/RegisterSchema.js";
+import sendMessageSchema from "./schemas/SendMessageSchema.js";
 
 dotenv.config();
 
@@ -21,7 +22,7 @@ server.post("/participants", async (req, res) => {
 		await mongoClient.connect();
 		const database = mongoClient.db("api-uol");
 
-		const validation = await schema.validateAsync(req.body);
+		const validation = await registerSchema.validateAsync(req.body);
 		console.log(validation);
 
 		const nameDoesExist = await database
@@ -66,6 +67,68 @@ server.get("/participants", async (req, res) => {
 	} catch (e) {
 		res.send("Não foi possível carregar os participantes");
 		mongoClient.close();
+	}
+});
+
+server.get("/messages", async (req, res) => {
+	try {
+		await mongoClient.connect();
+		const database = mongoClient.db("api-uol");
+
+		const limit = parseInt(req.query.limit);
+		const messages = await database
+			.collection("messages")
+			.find({
+				$or: [
+					{ to: "Todos" },
+					{ to: req.headers.user },
+					{ from: req.headers.user },
+				],
+			})
+			.toArray();
+		if (limit) {
+			if (messages.length <= 50) {
+				res.send(messages);
+				mongoClient.close();
+				return;
+			}
+			res.send([...messages].splice(messages.length - 50, messages.length));
+			mongoClient.close();
+		}
+		res.send(messages);
+		mongoClient.close();
+	} catch (e) {
+		console.log(e);
+		res.send(e);
+		mongoClient.close();
+	}
+});
+
+server.post("/messages", async (req, res) => {
+	try {
+		await mongoClient.connect();
+		const database = mongoClient.db("api-uol");
+
+		const bodyValidation = await sendMessageSchema.validateAsync(req.body);
+		const isRegistered = await database.collection("participants").findOne({
+			name: req.headers.user,
+		});
+
+		if (!isRegistered) {
+			throw res.status(422).send(`${req.headers.user} não está registrado`);
+		}
+
+		await database.collection("messages").insertOne({
+			...req.body,
+			from: req.headers.user,
+			time: dayjs().locale("pt-br").format("HH:mm:ss"),
+		});
+		res.status(201).send("sua mensagem foi enviada");
+	} catch (e) {
+		if (e.isJoi === true) {
+			res.sendStatus(422);
+			console.log(e.message);
+		}
 	}
 });
 
