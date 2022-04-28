@@ -52,6 +52,23 @@ server.post("/participants", async (req, res) => {
 	}
 });
 
+server.get("/participants", async (req, res) => {
+	try {
+		await mongoClient.connect();
+		const database = mongoClient.db("api-uol");
+
+		const participants = await database
+			.collection("participants")
+			.find({})
+			.toArray();
+		res.send(participants);
+		mongoClient.close();
+	} catch (e) {
+		res.send("Não foi possível carregar os participantes");
+		mongoClient.close();
+	}
+});
+
 server.listen(5000, () => {
 	console.log(chalk.green.bold("Servidor Funcionando"));
 });
