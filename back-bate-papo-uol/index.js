@@ -15,16 +15,25 @@ const server = express();
 server.use(cors());
 server.use(json());
 
+let database;
 const mongoClient = new MongoClient(process.env.MONGO_URI);
 
+const promise = mongoClient.connect();
+promise.then(() => {
+	database = mongoClient.db(process.env.MONGO_DB);
+});
+promise.catch(() => {
+	console.log("Não foi possível acessar o banco de dados");
+});
+
 server.post("/participants", async (req, res) => {
+	const validation = registerSchema.validate(req.body);
+	if (validation.error) {
+		res.status(422).send(e.message);
+		return;
+	}
+
 	try {
-		await mongoClient.connect();
-		const database = mongoClient.db("api-uol");
-
-		const validation = await registerSchema.validateAsync(req.body);
-		console.log(validation);
-
 		const nameDoesExist = await database
 			.collection("participants")
 			.findOne({ name: req.body.name });
@@ -44,37 +53,26 @@ server.post("/participants", async (req, res) => {
 			time: dayjs().locale("pt-br").format("HH:mm:ss"),
 		});
 		res.sendStatus(201);
-		mongoClient.close();
+		deleteIfInactive();
 	} catch (e) {
-		if (e.isJoi === true) {
-			console.log(e);
-			res.status(422).send(e.message);
-		}
+		res.sendStatus(422);
 	}
 });
 
 server.get("/participants", async (req, res) => {
 	try {
-		await mongoClient.connect();
-		const database = mongoClient.db("api-uol");
-
 		const participants = await database
 			.collection("participants")
 			.find({})
 			.toArray();
 		res.send(participants);
-		mongoClient.close();
 	} catch (e) {
-		res.send("Não foi possível carregar os participantes");
-		mongoClient.close();
+		res.status(422).send("Não foi possível carregar os participantes");
 	}
 });
 
 server.get("/messages", async (req, res) => {
 	try {
-		await mongoClient.connect();
-		const database = mongoClient.db("api-uol");
-
 		const limit = parseInt(req.query.limit);
 		const messages = await database
 			.collection("messages")
@@ -87,29 +85,27 @@ server.get("/messages", async (req, res) => {
 			})
 			.toArray();
 		if (limit) {
-			if (messages.length <= 50) {
+			if (messages.length <= limit) {
 				res.send(messages);
-				mongoClient.close();
 				return;
 			}
-			res.send([...messages].splice(messages.length - 50, messages.length));
-			mongoClient.close();
+			res.send([...messages].splice(messages.length - limit, messages.length));
+			return;
 		}
 		res.send(messages);
-		mongoClient.close();
 	} catch (e) {
 		console.log(e);
 		res.send(e);
-		mongoClient.close();
 	}
 });
 
 server.post("/messages", async (req, res) => {
+	const bodyValidation = sendMessageSchema.validate(req.body);
+	if (bodyValidation.error) {
+		res.status(422).send(bodyValidation.error.message);
+		return;
+	}
 	try {
-		await mongoClient.connect();
-		const database = mongoClient.db("api-uol");
-
-		const bodyValidation = await sendMessageSchema.validateAsync(req.body);
 		const isRegistered = await database.collection("participants").findOne({
 			name: req.headers.user,
 		});
@@ -125,13 +121,71 @@ server.post("/messages", async (req, res) => {
 		});
 		res.status(201).send("sua mensagem foi enviada");
 	} catch (e) {
-		if (e.isJoi === true) {
-			res.sendStatus(422);
-			console.log(e.message);
-		}
+		res.sendStatus(500);
 	}
 });
 
+server.post("/status", async (req, res) => {
+	try {
+		const userExists = await database
+			.collection("participants")
+			.findOne({ name: req.headers.user });
+
+		if (!userExists) {
+			res.status(404).send("Usuário não foi registrado ainda.");
+			return;
+		}
+
+		await database
+			.collection("participants")
+			.updateOne(
+				{ name: req.headers.user },
+				{ $set: { lastStatus: Date.now() } }
+			);
+		res.sendStatus(200);
+		console.log("Status Atualizado");
+	} catch (e) {
+		res.sendStatus(500);
+	}
+});
+
+function deleteIfInactive() {
+	setInterval(async () => {
+		try {
+			const participants = await database
+				.collection("participants")
+				.find({})
+				.toArray();
+			if (!participants) {
+				console.log("Ainda não existem usuários");
+				return;
+			}
+
+			participants.forEach(async (participant) => {
+				console.log(participant.lastStatus);
+				if (Date.now() - parseInt(participant.lastStatus) > 10000) {
+					try {
+						await database
+							.collection("participants")
+							.deleteOne({ name: participant.name });
+						await database.collection("messages").insertOne({
+							from: participant.name,
+							to: "Todos",
+							text: "Sai da sala...",
+							type: "status",
+							time: dayjs().locale("pt-br").format("HH:mm:ss"),
+						});
+						console.log("Participante deletado e mensagem enviada");
+					} catch (e) {
+						console.log(e);
+					}
+				}
+			});
+		} catch (e) {
+			console.log(e);
+		}
+	}, 15000);
+}
 server.listen(5000, () => {
 	console.log(chalk.green.bold("Servidor Funcionando"));
 });
