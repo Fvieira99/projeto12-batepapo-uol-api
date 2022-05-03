@@ -28,7 +28,6 @@ promise.catch(() => {
 
 server.post("/participants", async (req, res) => {
 	const name = stripHtml(req.body.name).result.trim();
-	console.log(name);
 
 	const validation = registerSchema.validate({ ...req.body, name: name });
 
@@ -149,7 +148,6 @@ server.post("/status", async (req, res) => {
 			.collection("participants")
 			.updateOne({ name: user }, { $set: { lastStatus: Date.now() } });
 		res.sendStatus(200);
-		console.log("Status Atualizado");
 	} catch (e) {
 		res.sendStatus(500);
 	}
@@ -168,7 +166,6 @@ function deleteIfInactive() {
 			}
 
 			participants.forEach(async (participant) => {
-				console.log(participant.lastStatus);
 				if (Date.now() - parseInt(participant.lastStatus) > 10000) {
 					try {
 						await database
@@ -181,7 +178,6 @@ function deleteIfInactive() {
 							type: "status",
 							time: dayjs().locale("pt-br").format("HH:mm:ss"),
 						});
-						console.log("Participante deletado e mensagem enviada");
 					} catch (e) {
 						console.log(e);
 					}
